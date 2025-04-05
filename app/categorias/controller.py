@@ -2,6 +2,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Body, status, HTTPException
 from pydantic import UUID4
 from sqlalchemy.future import select
+from sqlalchemy.exc import IntegrityError
 
 from app.contrib.dependencies import DatabaseDependency
 from app.categorias.schemas import CategoriaIn, CategoriaOut
@@ -19,11 +20,26 @@ router = APIRouter()
 async def post(
     db_session: DatabaseDependency, categoria_in: CategoriaIn = Body(...)
 ) -> CategoriaOut:
-    categoria_out = CategoriaOut(id=uuid4(), **categoria_in.model_dump())
-    categoria_model = CategoriaModel(**categoria_out.model_dump())
+    try:
+        categoria_out = CategoriaOut(id=uuid4(), **categoria_in.model_dump())
+        categoria_model = CategoriaModel(**categoria_out.model_dump())
 
-    db_session.add(categoria_model)
-    await db_session.commit()
+        db_session.add(categoria_model)
+        await db_session.commit()
+    except IntegrityError:
+        await db_session.rollback()
+
+        raise HTTPException(
+            status_code=status.HTTP_303_SEE_OTHER,
+            detail=f"Já existe uma categoria com o nome: {categoria_in.nome}",
+        )
+    except Exception:
+        await db_session.rollback()
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ocorreu um erro ao inserir os dados no banco.",
+        )
 
     return categoria_out
 
