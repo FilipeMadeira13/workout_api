@@ -1,9 +1,12 @@
 from datetime import datetime
 from uuid import uuid4
-from fastapi import APIRouter, Body, HTTPException, status
+from fastapi import APIRouter, Body, HTTPException, status, Query
 from pydantic import UUID4
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from fastapi_pagination import Page, Params  # type: ignore
+from fastapi_pagination.ext.sqlalchemy import paginate  # type: ignore
+
 
 from app.contrib.dependencies import DatabaseDependency
 from app.atleta.schemas import AtletaIn, AtletaOut, AtletaSimplificado, AtletaUpdate
@@ -91,14 +94,24 @@ async def post(db_session: DatabaseDependency, atleta_in: AtletaIn = Body(...)):
     "/",
     summary="Consultar todos os atletas",
     status_code=status.HTTP_200_OK,
-    response_model=list[AtletaOut],
+    response_model=Page[AtletaOut],
 )
-async def query(db_session: DatabaseDependency) -> list[AtletaOut]:  # type: ignore
-    atletas: list[AtletaOut] = (
-        (await db_session.execute(select(AtletaModel))).scalars().all()
-    )  # type: ignore
+async def query(db_session: DatabaseDependency, limit: int = Query(10, ge=1, le=100, description="Número de itens por página"), offset: int = Query(0, ge=0, description="Número de itens para pular")) -> Page[AtletaOut]:  # type: ignore
 
-    return [AtletaOut.model_validate(atleta) for atleta in atletas]
+    params = Params(limit=limit, offset=offset)
+
+    query = select(AtletaModel)
+
+    paginated_results = await paginate(db_session, query, params)
+
+    result_page = Page(
+        items=[AtletaOut.model_validate(item) for item in paginated_results.items],
+        total=paginated_results.total,
+        page=paginated_results.page,
+        size=paginated_results.size,
+    )
+
+    return result_page
 
 
 @router.get(
@@ -108,6 +121,7 @@ async def query(db_session: DatabaseDependency) -> list[AtletaOut]:  # type: ign
     response_model=list[AtletaSimplificado],
 )
 async def query(db_session: DatabaseDependency) -> list[AtletaSimplificado]:  # type: ignore
+
     atletas: list[AtletaSimplificado] = (
         (await db_session.execute(select(AtletaModel))).scalars().all()
     )  # type: ignore

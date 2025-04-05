@@ -1,8 +1,10 @@
 from uuid import uuid4
-from fastapi import APIRouter, Body, status, HTTPException
+from fastapi import APIRouter, Body, status, HTTPException, Query
 from pydantic import UUID4
 from sqlalchemy.future import select
 from sqlalchemy.exc import IntegrityError
+from fastapi_pagination import Page, Params  # type: ignore
+from fastapi_pagination.ext.sqlalchemy import paginate  # type: ignore
 
 from app.contrib.dependencies import DatabaseDependency
 from app.centro_treinamento.schemas import CentroTreinamentoIn, CentroTreinamentoOut
@@ -53,14 +55,27 @@ async def post(
     "/",
     summary="Consultar todos os centros de treinamento",
     status_code=status.HTTP_200_OK,
-    response_model=list[CentroTreinamentoOut],
+    response_model=Page[CentroTreinamentoOut],
 )
-async def query(db_session: DatabaseDependency) -> list[CentroTreinamentoOut]:  # type: ignore
-    centros_treinamento: list[CentroTreinamentoOut] = (
-        (await db_session.execute(select(CentroTreinamentoModel))).scalars().all()
-    )  # type: ignore
+async def query(db_session: DatabaseDependency, limit: int = Query(10, ge=1, le=100, description="Número de itens por página"), offset: int = Query(0, ge=0, description="Número de itens para pular")) -> Page[CentroTreinamentoOut]:  # type: ignore
 
-    return centros_treinamento
+    params = Params(limit=limit, offset=offset)
+
+    query = select(CentroTreinamentoModel)
+
+    paginated_results = await paginate(db_session, query, params)
+
+    result_page = Page(
+        items=[
+            CentroTreinamentoOut.model_validate(item)
+            for item in paginated_results.items
+        ],
+        total=paginated_results.total,
+        page=paginated_results.page,
+        size=paginated_results.size,
+    )
+
+    return result_page
 
 
 @router.get(

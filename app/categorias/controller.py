@@ -1,8 +1,10 @@
 from uuid import uuid4
-from fastapi import APIRouter, Body, status, HTTPException
+from fastapi import APIRouter, Body, status, HTTPException, Query
 from pydantic import UUID4
 from sqlalchemy.future import select
 from sqlalchemy.exc import IntegrityError
+from fastapi_pagination import Page, Params  # type: ignore
+from fastapi_pagination.ext.sqlalchemy import paginate  # type: ignore
 
 from app.contrib.dependencies import DatabaseDependency
 from app.categorias.schemas import CategoriaIn, CategoriaOut
@@ -48,14 +50,24 @@ async def post(
     "/",
     summary="Consultar todas as categorias",
     status_code=status.HTTP_200_OK,
-    response_model=list[CategoriaOut],
+    response_model=Page[CategoriaOut],
 )
-async def query(db_session: DatabaseDependency) -> list[CategoriaOut]:  # type: ignore
-    categorias: list[CategoriaOut] = (
-        (await db_session.execute(select(CategoriaModel))).scalars().all()
-    )  # type: ignore
+async def query(db_session: DatabaseDependency, limit: int = Query(10, ge=1, le=100, description="Número de itens por página"), offset: int = Query(0, ge=0, description="Número de itens para pular")) -> Page[CategoriaOut]:  # type: ignore
 
-    return categorias
+    params = Params(limit=limit, offset=offset)
+
+    query = select(CategoriaModel)
+
+    paginated_results = await paginate(db_session, query, params)
+
+    result_page = Page(
+        items=[CategoriaOut.model_validate(item) for item in paginated_results.items],
+        total=paginated_results.total,
+        page=paginated_results.page,
+        size=paginated_results.size,
+    )
+
+    return result_page
 
 
 @router.get(
