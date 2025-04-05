@@ -1,6 +1,6 @@
 # Workout API
 
-Desafio feito pela DIO no eu tive que realizar as segunites tarefas:
+Desafio feito pela DIO no eu tive que realizar as seguintes tarefas:
 
 ```
 - adicionar query parameters nos endpoints
